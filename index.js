@@ -1,53 +1,89 @@
-const { Client, GatewayIntentBits, SlashCommandBuilder } = require("discord.js");
+const ROLES_AUTORISES = [
+  "1443386649777012736" // Admin
+];
 require("dotenv").config();
+const {
+  Client,
+  GatewayIntentBits,
+  SlashCommandBuilder,
+  REST,
+  Routes
+} = require("discord.js");
 
-// ⚠️ Une seule déclaration du client
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+// -------- CONFIG --------
+const TOKEN = process.env.TOKEN;
 
-const WEBHOOK_URL = process.env.WEBHOOK_URL;
+// IDs des rôles autorisés
+const ROLES_AUTORISES = [
+  "ID_DU_ROLE_ICI"
+];
+// ------------------------
 
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds]
+});
+
+// -------- COMMANDE SLASH --------
+const command = new SlashCommandBuilder()
+  .setName("dire")
+  .setDescription("Faire parler le bot")
+  .addStringOption(option =>
+    option
+      .setName("message")
+      .setDescription("Message à envoyer")
+      .setRequired(true)
+  );
+
+// -------- ENREGISTREMENT --------
 client.once("ready", async () => {
   console.log(`✅ Bot connecté : ${client.user.tag}`);
 
-  // Enregistrement de la commande slash
-  const command = new SlashCommandBuilder()
-    .setName("partage")
-    .setDescription("Partager un lien via le webhook")
-    .addStringOption(option =>
-      option.setName("lien")
-        .setDescription("Lien Spotify / YouTube / SoundCloud")
-        .setRequired(true)
-    );
+  const rest = new REST({ version: "10" }).setToken(TOKEN);
 
-  await client.application.commands.set([command]);
-  console.log("✅ Commande /partage enregistrée");
+  await rest.put(
+    Routes.applicationCommands(client.user.id),
+    { body: [command.toJSON()] }
+  );
+
+  console.log("✅ Commande /dire enregistrée");
 });
 
+// -------- GESTION --------
 client.on("interactionCreate", async interaction => {
   if (!interaction.isChatInputCommand()) return;
+  if (interaction.commandName !== "dire") return;
 
-  if (interaction.commandName === "partage") {
-    const lien = interaction.options.getString("lien");
+  // Vérification des rôles
+  const rolesUtilisateur = interaction.member.roles.cache.map(r => r.id);
+  const autorise = ROLES_AUTORISES.some(role =>
+    rolesUtilisateur.includes(role)
+  );
 
-    try {
-      // Réponse immédiate pour éviter "délai dépassé"
-      await interaction.reply({ content: "⏳ Envoi de la musique...", ephemeral: true });
+  if (!autorise) {
+    return interaction.reply({
+      content: "❌ Tu n’as pas la permission d’utiliser cette commande.",
+      ephemeral: true
+    });
+  }
 
-      // Envoi du message au webhook
-      await fetch(WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: `🎵 Musique partagée : ${lien}` })
-      });
+  const message = interaction.options.getString("message");
 
-      // Mise à jour du message initial
-      await interaction.editReply({ content: "✅ Musique envoyée via le webhook !" });
+  try {
+    // Le BOT parle
+    await interaction.channel.send(message);
 
-    } catch (err) {
-      console.error(err);
-      await interaction.editReply({ content: "❌ Erreur lors de l’envoi. Vérifie ton webhook !" });
-    }
+    await interaction.reply({
+      content: "✅ Message envoyé par le bot",
+      ephemeral: true
+    });
+
+  } catch (err) {
+    console.error(err);
+    await interaction.reply({
+      content: "❌ Erreur lors de l’envoi du message",
+      ephemeral: true
+    });
   }
 });
 
-client.login(process.env.TOKEN);
+client.login(TOKEN);
